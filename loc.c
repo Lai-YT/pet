@@ -45,15 +45,7 @@
  * A special pet_loc_dummy instance is used to indicate that
  * no offset information is available (yet).
  */
-struct pet_loc {
-	int ref;
-	isl_ctx *ctx;
 
-	unsigned start;
-	unsigned end;
-	int line;
-	char *indent;
-};
 
 /* A special pet_loc object that is used to indicate that
  * no region information is available yet.

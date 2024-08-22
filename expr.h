@@ -1,6 +1,6 @@
 #ifndef PET_EXPR_H
 #define PET_EXPR_H
-
+#include <stdbool.h>
 #include <pet.h>
 
 #include "context.h"
@@ -63,6 +63,9 @@ struct pet_expr_access {
 	unsigned write : 1;
 	unsigned kill : 1;
 	isl_union_map *access[pet_expr_access_end];
+	bool is_texture_access;
+	bool is_surface_access;
+	char * data_type;
 };
 /* Representation of call expression.
  *
@@ -262,7 +265,8 @@ __isl_give pet_expr *pet_expr_access_patch(__isl_take pet_expr *expr,
 __isl_give isl_printer *pet_expr_print(__isl_keep pet_expr *expr,
 	__isl_take isl_printer *p);
 void pet_expr_dump_with_indent(__isl_keep pet_expr *expr, int indent);
-
+void pet_expr_mark_texture_access(__isl_keep pet_expr *expr);
+void pet_expr_mark_surface_access(__isl_keep pet_expr *expr);
 #if defined(__cplusplus)
 }
 #endif

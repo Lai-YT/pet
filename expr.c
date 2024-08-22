@@ -1097,7 +1097,7 @@ int pet_expr_is_equal(__isl_keep pet_expr *expr1, __isl_keep pet_expr *expr2)
 		if (!multi_pw_aff_is_equal(expr1->acc.index, expr2->acc.index))
 			return 0;
 		if (expr1->acc.depth != expr2->acc.depth)
-			return 0;
+			return 0;	
 		if (has_relevant_access_relations(expr1) !=
 		    has_relevant_access_relations(expr2)) {
 			int equal;
@@ -1410,6 +1410,7 @@ int pet_expr_foreach_expr_of_type(__isl_keep pet_expr *expr,
 	if (!expr)
 		return -1;
 
+	//for (i = expr->n_arg-1; i >=0 ; i--)
 	for (i = 0; i < expr->n_arg; ++i)
 		if (pet_expr_foreach_expr_of_type(expr->args[i],
 						    type, fn, user) < 0)
@@ -1420,6 +1421,30 @@ int pet_expr_foreach_expr_of_type(__isl_keep pet_expr *expr,
 
 	return 0;
 }
+
+
+int pet_expr_foreach_expr_of_type_postorder(__isl_keep pet_expr *expr,
+	enum pet_expr_type type,
+	int (*fn)(__isl_keep pet_expr *expr, void *user), void *user)
+{
+	int i;
+
+	if (!expr)
+		return -1;
+
+	for (i = expr->n_arg-1; i >=0 ; i--)
+	//for (i = 0; i < expr->n_arg; ++i)
+		if (pet_expr_foreach_expr_of_type_postorder(expr->args[i],
+						    type, fn, user) < 0)
+			return -1;
+
+	if (expr->type == type)
+		return fn(expr, user);
+
+	return 0;
+}
+
+
 
 /* Call "fn" on each of the subexpressions of "expr" of type pet_expr_access.
  *
@@ -1432,6 +1457,20 @@ int pet_expr_foreach_access_expr(__isl_keep pet_expr *expr,
 {
 	return pet_expr_foreach_expr_of_type(expr, pet_expr_access, fn, user);
 }
+
+
+/* Call "fn" on each of the subexpressions of "expr" of type pet_expr_access.
+ *
+ * Return -1 on error (where fn returning a negative value is treated as
+ * an error).
+ * Otherwise return 0.
+ */
+int pet_expr_foreach_access_expr_postorder(__isl_keep pet_expr *expr,
+	int (*fn)(__isl_keep pet_expr *expr, void *user), void *user)
+{
+	return pet_expr_foreach_expr_of_type_postorder(expr, pet_expr_access, fn, user);
+}
+
 
 /* Call "fn" on each of the subexpressions of "expr" of type pet_expr_call.
  *
@@ -3809,4 +3848,17 @@ void pet_expr_dump_with_indent(__isl_keep pet_expr *expr, int indent)
 void pet_expr_dump(__isl_keep pet_expr *expr)
 {
 	pet_expr_dump_with_indent(expr, 0);
+}
+
+void pet_expr_mark_texture_access(__isl_keep pet_expr *expr)
+{
+	expr->acc.is_texture_access=false;
+}
+void pet_expr_mark_surface_access(__isl_keep pet_expr *expr)
+{
+	expr->acc.is_surface_access=true;
+}
+void pet_expr_set_array_data_type(__isl_keep pet_expr *expr, char * type)
+{
+	expr->acc.data_type = type;	
 }

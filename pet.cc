@@ -1,19 +1,19 @@
 /*
  * Copyright 2011      Leiden University. All rights reserved.
  * Copyright 2012-2014 Ecole Normale Superieure. All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *    1. Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    2. Redistributions in binary form must reproduce the above
  *       copyright notice, this list of conditions and the following
  *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY LEIDEN UNIVERSITY ''AS IS'' AND ANY
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -25,12 +25,12 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * The views and conclusions contained in the software and documentation
  * are those of the authors and should not be interpreted as
  * representing official policies, either expressed or implied, of
  * Leiden University.
- */ 
+ */
 
 #include "config.h"
 
@@ -38,6 +38,7 @@
 #include <map>
 #include <vector>
 #include <iostream>
+#include <sstream>
 #ifdef HAVE_ADT_OWNINGPTR_H
 #include <llvm/ADT/OwningPtr.h>
 #else
@@ -430,6 +431,81 @@ struct PragmaScopHandler : public PragmaHandler {
 	}
 };
 
+
+/* Handle pragmas of the form
+ *
+ *	#pragma texture id (, id)*
+ *
+ * In particular, store the location of the line containing
+ * the pragma in the list "scops".
+ */
+struct PragmaTextureHandler : public PragmaHandler {
+	//PragmaTextureHandler() :
+	//	PragmaHandler("texture") {}
+
+	std::vector<Texture> &texture;
+
+	PragmaTextureHandler(std::vector<Texture> &texture) :
+		PragmaHandler("texture"), texture(texture) {}
+
+
+	virtual void HandlePragma(Preprocessor &PP,
+				  PragmaIntroducerKind Introducer,
+				  Token &ScopTok) {
+		/*SourceManager &SM = PP.getSourceManager();
+		SourceLocation sloc = ScopTok.getLocation();
+		int line = SM.getExpansionLineNumber(sloc);
+		sloc = translateLineCol(SM, SM.getFileID(sloc), line, 1);*/
+		printf("\n new pragma detected");
+		Token  Tok;
+		PP.Lex(Tok);
+		if (Tok.isNot(tok:: l_paren))
+		{	printf(" \nERROR ( expected !");
+			return ;
+		}
+		// error , expected  ’(’
+		bool  LexID = true;
+		string candidates;
+		//  expected  ’identifier ’ next
+		while(true)
+		{
+			PP.Lex(Tok);
+			//  consumes  next  token
+			if(LexID)
+			{
+				if (Tok.is(tok:: identifier))
+				{
+					IdentifierInfo * tex_id = Tok.getIdentifierInfo();
+					printf("\n found new token : %s", tex_id->getNameStart());
+					candidates  = candidates + tex_id->getNameStart();
+					LexID=false;
+					continue;
+				}
+				printf("\n ERROR ! Identifier expected");
+				return ;
+				// error , expected  ’identifier ’
+			}
+			if (Tok.is(tok:: comma))
+			{
+				LexID = true;
+				candidates  = candidates + ',';
+				//  expected  ’identifier ’ next
+				continue;
+			}
+			if (Tok.is(tok:: r_paren))
+			{
+					break;
+				//  success
+			}
+			printf("\nUnexpected token");
+		}
+		SourceLocation sloc = Tok.getLocation();
+		texture.push_back(Texture(sloc,candidates));
+	}
+};
+
+
+
 /* Handle pragmas of the form
  *
  *	#pragma endscop
@@ -564,6 +640,7 @@ struct PetASTConsumer : public ASTConsumer {
 	int (*fn)(struct pet_scop *scop, void *user);
 	void *user;
 	bool error;
+	std::vector<Texture> texture;
 
 	PetASTConsumer(isl_ctx *ctx, Preprocessor &PP, ASTContext &ast_context,
 		DiagnosticsEngine &diags, ScopLocList &scops,
@@ -596,6 +673,7 @@ struct PetASTConsumer : public ASTConsumer {
 	void add_pragma_handlers(Sema *sema) {
 		PP.AddPragmaHandler(new PragmaParameterHandler(*sema, context,
 								context_value));
+		PP.AddPragmaHandler(new PragmaTextureHandler(texture));
 		if (options->pencil) {
 			PragmaHandler *PH;
 			PH = new PragmaPencilHandler(independent);
@@ -607,6 +685,62 @@ struct PetASTConsumer : public ASTConsumer {
 	__isl_give isl_union_map *get_value_bounds() {
 		return isl_union_map_copy(vb_handler->value_bounds);
 	}
+
+
+	pet_scop * attach_texture_candidates(pet_scop *scop)
+	{
+		SourceManager &SM = PP.getSourceManager();
+		unsigned scop_start = scop->loc->start;
+		unsigned scop_end = scop->loc->end;
+		vector<Texture>::iterator it;
+		unsigned tex_pragma;
+		std :: string candidate_names;
+		for (it = texture.begin(); it != texture.end(); ++it)
+		{
+			tex_pragma = SM.getFileOffset( (*it).sloc);
+			if(scop_start<=tex_pragma && tex_pragma<=scop_end)
+			{
+				printf(" \n Success! ");
+				cout << (*it).candidates << endl;
+				if(candidate_names.empty())
+					candidate_names =  (*it).candidates;
+				else
+					candidate_names = candidate_names + "," + (*it).candidates;
+			}
+		}
+		cout << candidate_names << endl ;
+		if(!candidate_names.empty())
+		{
+			std::vector<string> vect;
+			std::stringstream ss(candidate_names);
+			while( ss.good() )
+			{
+	    			string substr;
+	    			getline( ss, substr, ',' );
+	    			vect.push_back( substr );
+			}
+			scop->n_texture_candidates = vect.size();
+			scop->candidates = (struct texture_candidate **)malloc(sizeof(texture_candidate *)*scop->n_texture_candidates);
+			int i=0;
+			for (auto const &c : vect)
+			{
+				scop->candidates[i] = (struct texture_candidate *)malloc(sizeof(texture_candidate));
+				scop->candidates[i]->array_name= (char *) malloc(sizeof(char)*strlen(c.c_str()));
+				scop->candidates[i]->id = i;
+				strcpy(scop->candidates[i]->array_name,c.c_str());
+				std::cout <<"check"<< scop->candidates[i]->array_name<< endl;
+				i++;
+	    		}
+		}
+		else
+		{
+			scop->n_texture_candidates = 0;
+			scop->candidates = NULL;
+		}
+		return scop;
+	}
+
+
 
 	/* Pass "scop" to "fn" after performing some postprocessing.
 	 * In particular, add the context and value_bounds constraints
@@ -627,6 +761,8 @@ struct PetASTConsumer : public ASTConsumer {
 			pet_scop_free(scop);
 			return;
 		}
+		scop = attach_texture_candidates(scop);
+
 		scop->context = isl_set_intersect(scop->context,
 						isl_set_copy(context));
 		scop->context_value = isl_set_intersect(scop->context_value,
@@ -1005,19 +1141,21 @@ static int foreach_scop_in_C_source(isl_ctx *ctx,
 	Diags.setSuppressSystemWarnings(true);
 	CompilerInvocation *invocation = construct_invocation(filename, Diags);
 	if (invocation)
-		Clang->setInvocation(invocation);
+		Clang->setInvocation(std::make_shared<CompilerInvocation>(*invocation));
+	PreprocessorOptions &PO = Clang->getPreprocessorOpts();
 	Diags.setClient(construct_printer(Clang, options->pencil));
 	Clang->createFileManager();
 	Clang->createSourceManager(Clang->getFileManager());
 	TargetInfo *target = create_target_info(Clang, Diags);
 	Clang->setTarget(target);
-	CompilerInvocation::setLangDefaults(Clang->getLangOpts(), IK_C,
+	TargetOptions TO;
+	llvm::Triple T(TO.Triple);
+	CompilerInvocation::setLangDefaults(Clang->getLangOpts(), InputKind(InputKind::Language::C), T, PO,
 					    LangStandard::lang_unspecified);
 	HeaderSearchOptions &HSO = Clang->getHeaderSearchOpts();
 	HSO.ResourceDir = ResourceDir;
 	for (int i = 0; i < options->n_path; ++i)
 		add_path(HSO, options->paths[i]);
-	PreprocessorOptions &PO = Clang->getPreprocessorOpts();
 	for (int i = 0; i < options->n_define; ++i)
 		PO.addMacroDef(options->defines[i]);
 	create_preprocessor(Clang);
@@ -1027,6 +1165,7 @@ static int foreach_scop_in_C_source(isl_ctx *ctx,
 		PP.getLangOpts());
 
 	ScopLocList scops;
+
 
 	const FileEntry *file = Clang->getFileManager().getFile(filename);
 	if (!file)
@@ -1038,6 +1177,10 @@ static int foreach_scop_in_C_source(isl_ctx *ctx,
 	PetASTConsumer consumer(ctx, PP, Clang->getASTContext(), Diags,
 				scops, function, options, fn, user);
 	Sema *sema = new Sema(PP, Clang->getASTContext(), consumer);
+
+
+
+
 
 	if (!options->autodetect) {
 		PP.AddPragmaHandler(new PragmaScopHandler(scops));

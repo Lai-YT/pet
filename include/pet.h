@@ -480,6 +480,13 @@ struct pet_independence {
 	isl_union_set *local;
 };
 
+struct texture_candidate {
+	int id;
+	char * array_name;
+	char * type;
+};
+
+
 /* "loc" represents the region of the source code that is represented
  * by this scop.
  * If the scop was detected based on scop and endscop pragmas, then
@@ -521,6 +528,10 @@ struct pet_scop {
 
 	int n_independence;
 	struct pet_independence **independences;
+
+	int n_texture_candidates;
+	struct texture_candidate **candidates;
+
 };
 typedef struct pet_scop pet_scop;
 
@@ -604,6 +615,17 @@ __isl_give isl_union_map *pet_scop_compute_outer_to_inner(
  */
 __isl_give isl_union_map *pet_scop_compute_outer_to_any(
 	__isl_keep pet_scop *scop);
+
+struct pet_loc {
+	int ref;
+	isl_ctx *ctx;
+
+	unsigned start;
+	unsigned end;
+	int line;
+	char *indent;
+
+};
 
 #if defined(__cplusplus)
 }

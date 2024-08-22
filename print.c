@@ -31,7 +31,7 @@
  * representing official policies, either expressed or implied, of
  * Leiden University.
  */
-
+#include <string.h>
 #include <isl/aff.h>
 #include <isl/ast.h>
 #include <isl/ast_build.h>
@@ -39,6 +39,80 @@
 #include "expr.h"
 #include "print.h"
 #include "scop.h"
+#include "tree.h"
+#include "../texture.h"
+/*enum tex_or_surf  in_texture_or_surface(const char * array_name, char ** type)
+{
+	if(home_tex_decl)
+	{
+		struct tex_decl * t= home_tex_decl;
+		while(t!=NULL){
+			if(!strcmp(t->tex_array->name,array_name)){
+				
+				if(t->tex_array->is_in_texture)
+					return in_texture;
+				else if(t->tex_array->is_in_surface)
+				{
+					*type = t->tex_array->type;
+					return in_surface;
+				}				
+				else
+					return none; 
+			}
+			else
+				t=t->next;	
+		}
+	}
+	return none;
+}*/
+
+__isl_give isl_printer *print_surface_reads(__isl_take isl_printer *p, struct surf_read_expressions * surface_reads)
+{
+	struct surf_read_expressions * t = surface_reads;
+	while(t!=NULL)
+	{
+		p = isl_printer_start_line(p);
+		p = isl_printer_print_str(p,t->type);				
+		p = isl_printer_print_str(p," ");
+		p = isl_printer_print_str(p,t->temp_name);								
+		p = isl_printer_print_str(p,";");				
+		p = isl_printer_end_line(p);	
+		p = isl_printer_start_line(p);		
+		p = isl_printer_print_ast_expr(p, t->surface_read_expr);
+		p = isl_printer_print_str(p,";");
+		p = isl_printer_end_line(p);	
+		isl_ast_expr_free(t->surface_read_expr);
+		//free(t->type);
+		//free(t->temp_name);
+		t=t->next;	
+	}
+	p = isl_printer_start_line(p);		
+	// Not needed.
+	//p = isl_printer_print_str(p, "__threadfence();");
+	p = isl_printer_end_line(p);
+	//__threadfence_block();
+
+	return p;
+}
+
+bool validate_surface_write(__isl_keep pet_expr *expr,isl_id_to_ast_expr *ref2expr)
+{
+	isl_ast_expr *ast_expr;
+	int is_access;
+	if(expr->type== pet_expr_access)
+	{
+		ast_expr = isl_id_to_ast_expr_get(ref2expr,pet_expr_access_get_ref_id(expr));
+		is_access = isl_ast_expr_get_type(ast_expr) == isl_ast_expr_op && 
+			isl_ast_expr_get_op_type(ast_expr) == isl_ast_op_access;
+		isl_ast_expr_free(ast_expr);
+		if(!is_access)
+			return false;
+		if(pet_expr_access_is_write(expr)!=isl_bool_true)
+			return false;
+		return expr->acc.is_surface_access;
+	}
+	return false;
+}
 
 /* Return the dimension of the domain of the embedded map
  * in the domain of "mpa".
@@ -278,8 +352,9 @@ static __isl_give isl_ast_expr *pet_expr_build_ast_expr(
 		mpa = data->fn_index(mpa, expr->acc.ref_id, data->user_index);
 	mpa = isl_multi_pw_aff_coalesce(mpa);
 
+
 	if (!pet_expr_is_affine(expr)) {
-		ast_expr = isl_ast_build_access_from_multi_pw_aff(build, mpa);
+		ast_expr = isl_ast_build_access_from_multi_pw_aff(build, mpa);	
 	} else {
 		pa = isl_multi_pw_aff_get_pw_aff(mpa, 0);
 		ast_expr = isl_ast_build_expr_from_pw_aff(build, pa);
@@ -361,11 +436,29 @@ static __isl_give isl_printer *print_access(__isl_take isl_printer *p,
 					isl_id_copy(expr->acc.ref_id));
 	is_access = isl_ast_expr_get_type(ast_expr) == isl_ast_expr_op &&
 		isl_ast_expr_get_op_type(ast_expr) == isl_ast_op_access;
+
+	/* Dont know why again verifying !is_access ? */
+
 	if (!is_access)
+	{
+		// as it is to preserve semantics
 		p = isl_printer_print_str(p, "(");
-	p = isl_printer_print_ast_expr(p, ast_expr);
-	if (!is_access)
-		p = isl_printer_print_str(p, ")");
+		p = isl_printer_print_ast_expr(p, ast_expr);
+		p = isl_printer_print_str(p, ")");		
+	}
+	else if(!expr->acc.is_texture_access)
+	{
+		// Cannot generate syntax to access array from texture memory
+		p = isl_printer_print_ast_expr(p, ast_expr);
+	}
+	else if(pet_expr_access_is_write(expr)==isl_bool_false)
+	{
+		p = print_texture_access(p,ast_expr);
+	}
+	else
+	{
+		p = isl_printer_print_ast_expr(p, ast_expr);
+	}
 	isl_ast_expr_free(ast_expr);
 
 	return p;
@@ -405,13 +498,42 @@ static __isl_give isl_printer *print_op(__isl_take isl_printer *p,
 			p = isl_printer_print_str(p, pet_op_str(expr->op));
 		break;
 	case 2:
-		p = print_pet_expr(p, expr->args[pet_bin_lhs], 0,
-					ref2expr);
-		p = isl_printer_print_str(p, " ");
-		p = isl_printer_print_str(p, pet_op_str(expr->op));
-		p = isl_printer_print_str(p, " ");
-		p = print_pet_expr(p, expr->args[pet_bin_rhs], 0,
-					ref2expr);
+		if(validate_surface_write(expr->args[pet_bin_lhs],ref2expr))
+		{
+		char * type = expr->args[pet_bin_lhs]->acc.data_type;
+		p = isl_printer_print_str(p, "{");
+		p = isl_printer_end_line(p);
+		p = isl_printer_indent(p, 2);
+		p = isl_printer_start_line(p);
+		p = isl_printer_print_str(p,type);
+		p = isl_printer_print_str(p," ");
+		p = isl_printer_print_str(p,"surf_write_temp_");
+		p = isl_printer_print_int(p,surf_write_temp_counter);
+		p = isl_printer_print_str(p," = ");
+		p = isl_printer_print_str(p, "(");
+		p = print_pet_expr(p,expr->args[pet_bin_rhs], 0,ref2expr);
+		p = isl_printer_print_str(p, ");");
+		p = isl_printer_end_line(p);									
+		p = isl_printer_start_line(p);							
+		isl_ast_expr * expr_destination = isl_id_to_ast_expr_get(ref2expr,pet_expr_access_get_ref_id(expr->args[pet_bin_lhs]));
+		int surf_dim = isl_ast_expr_get_op_n_arg(expr_destination)-1;
+		p = print_surface_write_call(p,surf_write_temp_counter++,type,surf_dim,expr_destination);
+		p = isl_printer_end_line(p);
+		p = isl_printer_indent(p, -2);
+		p = isl_printer_start_line(p);
+		p = isl_printer_print_str(p, "}");
+		isl_ast_expr_free(expr_destination);	
+		}
+		else
+		{
+			p = print_pet_expr(p, expr->args[pet_bin_lhs], 0,
+						ref2expr);
+			p = isl_printer_print_str(p, " ");
+			p = isl_printer_print_str(p, pet_op_str(expr->op));
+			p = isl_printer_print_str(p, " ");
+			p = print_pet_expr(p, expr->args[pet_bin_rhs], 0,
+						ref2expr);
+		}
 		break;
 	case 3:
 		p = print_pet_expr(p, expr->args[pet_ter_cond], 0,
@@ -440,6 +562,7 @@ static __isl_give isl_printer *print_pet_expr(__isl_take isl_printer *p,
 	__isl_keep isl_id_to_ast_expr *ref2expr)
 {
 	int i;
+
 
 	switch (expr->type) {
 	case pet_expr_error:
@@ -730,10 +853,26 @@ static __isl_give isl_printer *print_pet_tree(__isl_take isl_printer *p,
 		return isl_printer_end_line(p);
 	case pet_tree_expr:
 		expr = pet_tree_expr_get_expr(tree);
+		if(tree->surface_reads)
+		{
+			printf("surface reads found ------------");
+			p = isl_printer_start_line(p);
+			p = isl_printer_print_str(p, "{");
+			p = isl_printer_end_line(p);
+			p = isl_printer_indent(p, 2);		
+			p = print_surface_reads(p, tree->surface_reads);
+		}			
 		p = isl_printer_start_line(p);
 		p = print_pet_expr(p, expr, 1, ref2expr);
 		p = isl_printer_print_str(p, ";");
 		p = isl_printer_end_line(p);
+		if(tree->surface_reads)
+		{
+			p = isl_printer_indent(p, -2);
+			p = isl_printer_start_line(p);
+			p = isl_printer_print_str(p, "}");
+			p = isl_printer_end_line(p);
+		}
 		pet_expr_free(expr);
 		break;
 	case pet_tree_if:

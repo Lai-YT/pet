@@ -53,6 +53,8 @@ struct pet_tree {
 
 	enum pet_tree_type type;
 
+	struct surf_read_expressions * surface_reads;
+
 	union {
 		struct {
 			int block;
@@ -133,6 +135,9 @@ __isl_give pet_tree *pet_tree_set_loc(__isl_take pet_tree *tree,
 int pet_tree_foreach_sub_tree(__isl_keep pet_tree *tree,
 	int (*fn)(__isl_keep pet_tree *tree, void *user), void *user);
 
+int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
+	int (*fn)(__isl_keep pet_tree *tree, void *user), void *user);
+
 __isl_give pet_tree *pet_tree_map_access_expr(__isl_take pet_tree *tree,
 	__isl_give pet_expr *(*fn)(__isl_take pet_expr *expr, void *user),
 	void *user);
@@ -152,6 +157,9 @@ __isl_give pet_tree *pet_tree_gist(__isl_take pet_tree *tree,
 	__isl_keep isl_set *context, __isl_keep isl_union_map *value_bounds);
 __isl_give pet_tree *pet_tree_update_domain(__isl_take pet_tree *tree,
 	__isl_take isl_multi_pw_aff *update);
+
+
+
 
 void pet_tree_dump_with_indent(__isl_keep pet_tree *tree, int indent);
 

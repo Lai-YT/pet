@@ -37,6 +37,7 @@
 #include "expr.h"
 #include "loc.h"
 #include "tree.h"
+#include "../texture.h"
 
 #define ARRAY_SIZE(array) (sizeof(array)/sizeof(*array))
 
@@ -893,11 +894,13 @@ int pet_tree_foreach_sub_tree(__isl_keep pet_tree *tree,
 	switch (tree->type) {
 	case pet_tree_error:
 		return -1;
-	case pet_tree_block:
+	case pet_tree_block: {
 		for (i = 0; i < tree->u.b.n; ++i)
 			if (pet_tree_foreach_sub_tree(tree->u.b.child[i],
 							fn, user) < 0)
 				return -1;
+		
+		}
 		break;
 	case pet_tree_break:
 	case pet_tree_continue:
@@ -905,24 +908,28 @@ int pet_tree_foreach_sub_tree(__isl_keep pet_tree *tree,
 	case pet_tree_decl_init:
 	case pet_tree_expr:
 		break;
-	case pet_tree_if:
+	case pet_tree_if: {
 		if (pet_tree_foreach_sub_tree(tree->u.i.then_body,
 						fn, user) < 0)
 			return -1;
+		}
 		break;
-	case pet_tree_if_else:
+	case pet_tree_if_else: {
 		if (pet_tree_foreach_sub_tree(tree->u.i.then_body,
 						fn, user) < 0)
 			return -1;
 		if (pet_tree_foreach_sub_tree(tree->u.i.else_body,
 						fn, user) < 0)
 			return -1;
+		}
 		break;
 	case pet_tree_while:
 	case pet_tree_for:
-	case pet_tree_infinite_loop:
+	case pet_tree_infinite_loop: {
+	
 		if (pet_tree_foreach_sub_tree(tree->u.l.body, fn, user) < 0)
 			return -1;
+		}
 		break;
 	}
 
@@ -1002,6 +1009,16 @@ static int foreach_expr(__isl_keep pet_tree *tree, void *user)
 	return 0;
 }
 
+/* Intermediate data structure for foreach_access_expr.
+ *
+ * "fn" is the function that needs to be called on each access subexpression.
+ * "user" is the user argument to be passed to "fn".
+ */
+struct pet_tree_foreach_access_expr_data {
+	int (*fn)(__isl_keep pet_expr *expr, void *user);
+	void *user;
+};
+
 /* Call "fn" on each top-level expression in the nodes of "tree"
  *
  * Return 0 on success and -1 on error, where "fn" returning a negative
@@ -1018,15 +1035,127 @@ int pet_tree_foreach_expr(__isl_keep pet_tree *tree,
 	return pet_tree_foreach_sub_tree(tree, &foreach_expr, &data);
 }
 
-/* Intermediate data structure for foreach_access_expr.
- *
- * "fn" is the function that needs to be called on each access subexpression.
- * "user" is the user argument to be passed to "fn".
- */
-struct pet_tree_foreach_access_expr_data {
-	int (*fn)(__isl_keep pet_expr *expr, void *user);
-	void *user;
-};
+/*void print_surf_reads_testing(struct surf_read_expressions * t)
+{
+	while(t!=NULL)
+	{
+		isl_printer * new_var_name;
+		isl_ctx * ctx;
+		ctx =  isl_ast_expr_get_ctx(t->surface_read_expr);
+		new_var_name = isl_printer_to_str(ctx);									
+		new_var_name=isl_printer_print_ast_expr(new_var_name,t->surface_read_expr);			
+		char * dt = isl_printer_get_str(new_var_name);
+		printf("\n\n---------CHECK-------");
+		printf("  %s ",dt);
+		fflush(stdout);
+		//isl_ast_expr_free(t->surface_read_expr);
+		t=t->next;
+		isl_printer_free(new_var_name);	
+	}
+
+}*/
+
+int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
+	int (*fn)(__isl_keep pet_tree *tree, void *user), void *user)
+{
+	int i;
+		printf("============= CALLING FUNCTION =============");		
+	struct pet_traversal_arg * arg ;
+	struct pet_tree_foreach_expr_data * wrapper1;
+	struct pet_tree_foreach_access_expr_data * wrapper2;
+
+	if (!tree)
+		return -1;
+
+	if (fn(tree, user) < 0)
+		return -1;
+
+	switch (tree->type) {
+	case pet_tree_error:
+		return -1;
+	case pet_tree_block: {
+		for (i = 0; i < tree->u.b.n; ++i)
+			if (pet_tree_foreach_sub_tree_postorder(tree->u.b.child[i],
+							fn, user) < 0)
+				return -1;
+			arg = (struct pet_traversal_arg *) user;
+			if(arg->kernel_analysis->is_annotating){
+				printf("===========BLOCK===============");			
+			}		
+		}
+		break;
+	case pet_tree_break: break;
+	case pet_tree_continue: break;
+	case pet_tree_decl: break;
+	case pet_tree_decl_init: break;
+	case pet_tree_expr: {
+				wrapper1 = (struct pet_tree_foreach_expr_data *) user;
+				wrapper2 = (struct pet_tree_foreach_access_expr_data *) wrapper1-> user;
+				arg = wrapper2->user;
+				if(arg->kernel_analysis->is_annotating==true)
+				{
+					struct surf_read_expressions * t =arg->kernel_analysis->read_surface_to_temp;
+					//printf("\n List of surface reads \n ");			
+					//print_surf_reads_testing(t);
+					tree->surface_reads=t;
+					arg->kernel_analysis->read_surface_to_temp = NULL;
+				}		
+		}
+		break;
+	case pet_tree_if: {
+		if (pet_tree_foreach_sub_tree_postorder(tree->u.i.then_body,
+						fn, user) < 0)
+			return -1;
+		arg = (struct pet_traversal_arg *) user;
+			if(arg->kernel_analysis->is_annotating){
+				printf("=============IF=============");			
+			}
+			else{
+			printf("=============-----------NO ANNOTATING -------=============");		
+			}
+		}
+		break;
+	case pet_tree_if_else: {
+		if (pet_tree_foreach_sub_tree_postorder(tree->u.i.then_body,
+						fn, user) < 0)
+			return -1;
+		arg = (struct pet_traversal_arg *) user;
+			if(arg->kernel_analysis->is_annotating){
+				printf("============IF_THEN==============");			
+			}
+		if (pet_tree_foreach_sub_tree_postorder(tree->u.i.else_body,
+						fn, user) < 0)
+			return -1;
+		}
+		arg = (struct pet_traversal_arg *) user;
+			if(arg->kernel_analysis->is_annotating){
+				printf("============ELSE THEN==============");			
+			}
+		break;
+	case pet_tree_while:
+	case pet_tree_for:
+	case pet_tree_infinite_loop: {
+	printf("============ LOop found==============");		
+		if (pet_tree_foreach_sub_tree_postorder(tree->u.l.body, fn, user) < 0) {	
+			return -1;
+		}	
+	}
+	break;
+		
+	}
+
+	return 0;
+}
+
+
+int pet_tree_foreach_expr_postorder(__isl_keep pet_tree *tree,
+	int (*fn)(__isl_keep pet_expr *expr, void *user), void *user)
+{
+	struct pet_tree_foreach_expr_data data = { fn, user };
+
+	return pet_tree_foreach_sub_tree_postorder(tree, &foreach_expr, &data);
+}
+
 
 /* Call data->fn on each access subexpression of "expr".
  * This function is used as a callback to pet_tree_foreach_expr
@@ -1042,6 +1171,14 @@ static int foreach_access_expr(__isl_keep pet_expr *expr, void *user)
 	return pet_expr_foreach_access_expr(expr, data->fn, data->user);
 }
 
+static int foreach_access_expr_postorder(__isl_keep pet_expr *expr, void *user)
+{
+	struct pet_tree_foreach_access_expr_data *data = user;
+
+	return pet_expr_foreach_access_expr_postorder(expr, data->fn, data->user);
+}
+
+
 /* Call "fn" on each access subexpression in the nodes of "tree"
  *
  * Return 0 on success and -1 on error, where "fn" returning a negative
@@ -1056,6 +1193,13 @@ int pet_tree_foreach_access_expr(__isl_keep pet_tree *tree,
 	struct pet_tree_foreach_access_expr_data data = { fn, user };
 
 	return pet_tree_foreach_expr(tree, &foreach_access_expr, &data);
+}
+
+int pet_tree_foreach_access_expr_postorder(__isl_keep pet_tree *tree,
+	int (*fn)(__isl_keep pet_expr *expr, void *user), void *user)
+{
+	struct pet_tree_foreach_access_expr_data data = { fn, user };
+	return pet_tree_foreach_expr_postorder(tree, &foreach_access_expr_postorder, &data);
 }
 
 /* Modify all top-level expressions in the nodes of "tree"
@@ -1636,4 +1780,9 @@ void pet_tree_dump_with_indent(__isl_keep pet_tree *tree, int indent)
 void pet_tree_dump(__isl_keep pet_tree *tree)
 {
 	pet_tree_dump_with_indent(tree, 0);
+}
+
+__isl_give pet_expr * construct_surface_temp_decl(char * type, char *temp)
+{
+	
 }

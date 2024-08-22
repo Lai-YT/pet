@@ -1,4 +1,6 @@
 #include <map>
+#include <string>
+
 
 #include <clang/Basic/SourceManager.h>
 #include <clang/AST/Decl.h>
@@ -16,6 +18,8 @@
 #include "scop.h"
 #include "summary.h"
 #include "tree.h"
+
+using namespace clang;
 
 namespace clang {
 
@@ -56,6 +60,15 @@ struct Independent {
 
 	unsigned line;
 };
+
+
+struct Texture {
+	Texture(SourceLocation sloc, std ::string candidates) : sloc(sloc),candidates(candidates) {}
+
+	SourceLocation sloc;
+	std :: string candidates;
+};
+
 
 /* Compare two TypeDecl pointers based on their names.
  */
@@ -153,7 +166,7 @@ struct PetScan {
 		ctx(isl_union_map_get_ctx(value_bounds)),
 		options(options), partial(false), value_bounds(value_bounds),
 		last_line(0), current_line(0),
-		independent(independent), n_rename(0),
+		independent(independent),n_rename(0),
 		declared_names_collected(false), n_arg(0) {
 		id_size = isl_id_to_pet_expr_alloc(ctx, 0);
 	}
