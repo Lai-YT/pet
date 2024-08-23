@@ -899,7 +899,7 @@ int pet_tree_foreach_sub_tree(__isl_keep pet_tree *tree,
 			if (pet_tree_foreach_sub_tree(tree->u.b.child[i],
 							fn, user) < 0)
 				return -1;
-		
+
 		}
 		break;
 	case pet_tree_break:
@@ -926,7 +926,7 @@ int pet_tree_foreach_sub_tree(__isl_keep pet_tree *tree,
 	case pet_tree_while:
 	case pet_tree_for:
 	case pet_tree_infinite_loop: {
-	
+
 		if (pet_tree_foreach_sub_tree(tree->u.l.body, fn, user) < 0)
 			return -1;
 		}
@@ -1042,15 +1042,15 @@ int pet_tree_foreach_expr(__isl_keep pet_tree *tree,
 		isl_printer * new_var_name;
 		isl_ctx * ctx;
 		ctx =  isl_ast_expr_get_ctx(t->surface_read_expr);
-		new_var_name = isl_printer_to_str(ctx);									
-		new_var_name=isl_printer_print_ast_expr(new_var_name,t->surface_read_expr);			
+		new_var_name = isl_printer_to_str(ctx);
+		new_var_name=isl_printer_print_ast_expr(new_var_name,t->surface_read_expr);
 		char * dt = isl_printer_get_str(new_var_name);
 		printf("\n\n---------CHECK-------");
 		printf("  %s ",dt);
 		fflush(stdout);
 		//isl_ast_expr_free(t->surface_read_expr);
 		t=t->next;
-		isl_printer_free(new_var_name);	
+		isl_printer_free(new_var_name);
 	}
 
 }*/
@@ -1059,7 +1059,7 @@ int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
 	int (*fn)(__isl_keep pet_tree *tree, void *user), void *user)
 {
 	int i;
-		printf("============= CALLING FUNCTION =============");		
+		// printf("============= CALLING FUNCTION =============");
 	struct pet_traversal_arg * arg ;
 	struct pet_tree_foreach_expr_data * wrapper1;
 	struct pet_tree_foreach_access_expr_data * wrapper2;
@@ -1079,9 +1079,9 @@ int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
 							fn, user) < 0)
 				return -1;
 			arg = (struct pet_traversal_arg *) user;
-			if(arg->kernel_analysis->is_annotating){
-				printf("===========BLOCK===============");			
-			}		
+			// if(arg->kernel_analysis->is_annotating){
+			// 	printf("===========BLOCK===============");
+			// }
 		}
 		break;
 	case pet_tree_break: break;
@@ -1095,11 +1095,11 @@ int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
 				if(arg->kernel_analysis->is_annotating==true)
 				{
 					struct surf_read_expressions * t =arg->kernel_analysis->read_surface_to_temp;
-					//printf("\n List of surface reads \n ");			
+					//printf("\n List of surface reads \n ");
 					//print_surf_reads_testing(t);
 					tree->surface_reads=t;
 					arg->kernel_analysis->read_surface_to_temp = NULL;
-				}		
+				}
 		}
 		break;
 	case pet_tree_if: {
@@ -1107,12 +1107,12 @@ int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
 						fn, user) < 0)
 			return -1;
 		arg = (struct pet_traversal_arg *) user;
-			if(arg->kernel_analysis->is_annotating){
-				printf("=============IF=============");			
-			}
-			else{
-			printf("=============-----------NO ANNOTATING -------=============");		
-			}
+			// if(arg->kernel_analysis->is_annotating){
+			// 	printf("=============IF=============");
+			// }
+			// else{
+			// printf("=============-----------NO ANNOTATING -------=============");
+			// }
 		}
 		break;
 	case pet_tree_if_else: {
@@ -1120,28 +1120,28 @@ int pet_tree_foreach_sub_tree_postorder(__isl_keep pet_tree *tree,
 						fn, user) < 0)
 			return -1;
 		arg = (struct pet_traversal_arg *) user;
-			if(arg->kernel_analysis->is_annotating){
-				printf("============IF_THEN==============");			
-			}
+			// if(arg->kernel_analysis->is_annotating){
+			// 	printf("============IF_THEN==============");
+			// }
 		if (pet_tree_foreach_sub_tree_postorder(tree->u.i.else_body,
 						fn, user) < 0)
 			return -1;
 		}
 		arg = (struct pet_traversal_arg *) user;
-			if(arg->kernel_analysis->is_annotating){
-				printf("============ELSE THEN==============");			
-			}
+			// if(arg->kernel_analysis->is_annotating){
+			// 	printf("============ELSE THEN==============");
+			// }
 		break;
 	case pet_tree_while:
 	case pet_tree_for:
 	case pet_tree_infinite_loop: {
-	printf("============ LOop found==============");		
-		if (pet_tree_foreach_sub_tree_postorder(tree->u.l.body, fn, user) < 0) {	
+	// printf("============ LOop found==============");
+		if (pet_tree_foreach_sub_tree_postorder(tree->u.l.body, fn, user) < 0) {
 			return -1;
-		}	
+		}
 	}
 	break;
-		
+
 	}
 
 	return 0;
@@ -1784,5 +1784,5 @@ void pet_tree_dump(__isl_keep pet_tree *tree)
 
 __isl_give pet_expr * construct_surface_temp_decl(char * type, char *temp)
 {
-	
+
 }

@@ -855,7 +855,7 @@ static __isl_give isl_printer *print_pet_tree(__isl_take isl_printer *p,
 		expr = pet_tree_expr_get_expr(tree);
 		if(tree->surface_reads)
 		{
-			printf("surface reads found ------------");
+			// printf("surface reads found ------------");
 			p = isl_printer_start_line(p);
 			p = isl_printer_print_str(p, "{");
 			p = isl_printer_end_line(p);
